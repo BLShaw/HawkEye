@@ -12,7 +12,7 @@ An edge-AI drone detection system optimized for the Raspberry Pi 4. This project
 ```text
 drone-detection/
 ├── front/                  # Ground Control Station dashboard (controller.html)
-├── notebooks/              # Google Colab / Kaggle notebooks for model training and multi-class dataset merging
+├── notebooks/              # Google Colab notebooks for model training and multi-class dataset merging
 └── src/
     ├── data/               # Scripts to capture webcam datasets and auto-label images
     ├── deployment/         # Edge inference script for the Raspberry Pi (pi_inference.py)
@@ -70,25 +70,37 @@ If you have a powerful PC, you can train locally using the `train_finetune.py` s
    Once finished, look for the resulting weights file located at `runs/train/drone_custom/weights/best.pt`.
 
 ### Option B: Cloud Training (Recommended for accuracy)
-For the most robust system, we recommend using Kaggle or Google Colab (T4 GPUs are available for free).
-1. Open Kaggle or Colab and upload the notebook located at `notebooks/kaggle_train.ipynb`.
+For the most robust system, we recommend using Google Colab (T4 GPUs are available for free).
+1. Open Google Colab and upload the notebook located at `notebooks/colab_train.ipynb`.
 2. This notebook automatically downloads over 12,000 images of drones, birds, airplanes, helicopters, and balloons.
 3. Run all cells. It will train a 6-class model that drastically reduces false alarms.
 4. Download the output file (`sky_best.zip`) which contains your `best.pt` file.
 
-## Step 3: Deploy on Raspberry Pi
+## Step 3: Deploy on PC / Laptop (Webcam)
 
-Now we will run the live detection script on the Raspberry Pi.
+Now we will run the live detection script natively on your computer using your built-in webcam.
+
+1. **Place Weights:** Ensure your newly trained `best.pt` file is in the root directory of the project. (If not found, it will automatically download a base YOLOv8n model).
+2. **Run Inference:**
+   ```bash
+   python src/deployment/pc_inference.py
+   ```
+   
+> [!NOTE]
+> **How it works:** The script will automatically detect if you have a GPU (CUDA) or Apple Silicon (MPS) to accelerate inference. It opens your webcam, feeds the frames to the YOLO model, and pops up a live window displaying the video feed with bounding boxes drawn over detected drones. Press **'q'** to quit the window.
+
+### Alternative: Deploy on Edge (Raspberry Pi)
+
+If you still want to deploy HawkEye to a headless Raspberry Pi:
 
 1. **Transfer Files:** Copy this entire project folder to your Raspberry Pi.
-2. **Transfer Weights:** Place your newly trained `best.pt` file in the root directory of the project.
-3. **Run Inference:**
+2. **Run Inference:**
    ```bash
    python src/deployment/pi_inference.py
    ```
    
 > [!NOTE]
-> **How it works:** The script triggers the hardware-accelerated `rpicam-vid` command to stream camera footage directly into Python memory. The YOLO model then processes each frame.
+> **How it works:** The Pi script triggers the hardware-accelerated `rpicam-vid` command to stream camera footage directly into Python memory instead of using standard OpenCV captures, which drastically improves FPS on the Pi.
 
 If a drone is detected, you will see output like this in your terminal:
 ```
@@ -109,12 +121,12 @@ To view the futuristic Ground Control UI:
 # Architecture & Research Report
 
 **Prepared by:** BLShaw  
-**Purpose:** Military Defense Project — Drone Detection using Raspberry Pi 4  
+**Purpose:** Military Defense Project - Drone Detection using Raspberry Pi 4  
 **Date:** June 2026
 
 ## 1. What We're Building
 
-A ground-based drone detection system that uses a camera and AI to spot hostile drones in real-time, tell them apart from birds and planes, and trigger a response — all running on a **Raspberry Pi 4 (4GB, v1.2)**.
+A ground-based drone detection system that uses a camera and AI to spot hostile drones in real-time, tell them apart from birds and planes, and trigger a response - all running on a **Raspberry Pi 4 (4GB, v1.2)**.
 
 The goal: **90%+ detection accuracy** with stable FPS (frames per second).
 
@@ -129,7 +141,7 @@ The goal: **90%+ detection accuracy** with stable FPS (frames per second).
 - A small jet-powered drone that **hunts and destroys other drones**
 - Launches in seconds from a box called the "Nest"
 - Flies at high speed, locks onto the target, destroys it with a warhead
-- If it turns out to be a false alarm — it flies back and lands safely
+- If it turns out to be a false alarm - it flies back and lands safely
 - Cost: ~$500,000 per unit
 
 ### Anduril Lattice AI (The Brain)
@@ -139,7 +151,7 @@ The goal: **90%+ detection accuracy** with stable FPS (frames per second).
 
 **Key takeaway for our project:** Real systems use multiple sensors together. Our Raspberry Pi version focuses on the **camera + AI** layer of this.
 
-## 3. The Camera — Raspberry Pi Camera Module 3 NoIR
+## 3. The Camera - Raspberry Pi Camera Module 3 NoIR
 
 | Feature | Spec |
 |---|---|
@@ -153,22 +165,22 @@ The goal: **90%+ detection accuracy** with stable FPS (frames per second).
 
 **Detection Range:** Realistically detects a drone clearly up to **100–150 metres** with standard lens. For longer range, add a USB telephoto camera.
 
-For night use: pair the NoIR camera with **850nm IR LED floodlights** — invisible to humans, visible to the camera.
+For night use: pair the NoIR camera with **850nm IR LED floodlights** - invisible to humans, visible to the camera.
 
-## 4. The AI Model — YOLOv8 (You Only Look Once)
+## 4. The AI Model - YOLOv8 (You Only Look Once)
 
 **Why YOLO?** It's fast, accurate, and runs on small hardware like the Raspberry Pi.
 
-**Which version for RPi 4?** → **YOLOv8n (nano)** — smallest and fastest version, optimized for limited hardware.
+**Which version for RPi 4?** → **YOLOv8n (nano)** - smallest and fastest version, optimized for limited hardware.
 
-**What it does:** Looks at each camera frame, draws a box around the drone, and says "drone detected — 94% confidence."
+**What it does:** Looks at each camera frame, draws a box around the drone, and says "drone detected - 94% confidence."
 
 **Performance target:**
 - mAP50 (accuracy score): **above 0.90** (90%+)
 - FPS on RPi 4: **5–15 FPS** (stable, usable for real-time detection)
 - To boost FPS: convert model to **INT8 format** using TFLite or ONNX
 
-## 5. The Dataset — What to Train On
+## 5. The Dataset - What to Train On
 
 We need images of drones AND non-drones so the model learns the difference.
 
@@ -178,7 +190,7 @@ We need images of drones AND non-drones so the model learns the difference.
 | Drone / UAV | Main target to detect |
 | Bird | Looks similar on camera, must not trigger false alarm |
 | Airplane | Different flight pattern, must be ignored |
-| Helicopter | Rotating blades — similar to drone but bigger |
+| Helicopter | Rotating blades - similar to drone but bigger |
 | Balloon | Slow-moving, non-threat |
 
 ### Where to get the data (free):
@@ -195,7 +207,7 @@ Flip, rotate, blur, crop, and change brightness on existing images → this mult
 |---|---|
 | 1. Collect dataset | Download from Roboflow (5,000–10,000 images minimum) |
 | 2. Annotate | Label boxes around drones in every image (Roboflow auto-annotates) |
-| 3. Train | Use **Google Colab** (free GPU) — train for **150 epochs** |
+| 3. Train | Use **Google Colab** (free GPU) - train for **150 epochs** |
 | 4. Export | Export to **TFLite or ONNX** format for Raspberry Pi |
 | 5. Deploy | Copy model to RPi, run with Python + OpenCV |
 
@@ -243,8 +255,8 @@ flowchart TD
 
 ## 10. Key Takeaways
 
-- Real military systems (AeroEye, Anduril) use **multiple sensors** — radar, RF, cameras, acoustics — fused together. Our system covers the **visual/AI layer**.
-- **YOLOv8n** is the right model for Raspberry Pi 4 — fast, accurate, lightweight.
+- Real military systems (AeroEye, Anduril) use **multiple sensors** - radar, RF, cameras, acoustics - fused together. Our system covers the **visual/AI layer**.
+- **YOLOv8n** is the right model for Raspberry Pi 4 - fast, accurate, lightweight.
 - Train on **5,000–10,000 images** with drone, bird, airplane, balloon, helicopter classes.
 - **150 epochs + data augmentation** consistently hits 90%+ accuracy.
 - The **Camera Module 3 NoIR** covers day and night detection up to ~150m.
