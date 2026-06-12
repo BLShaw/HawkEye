@@ -1,0 +1,36 @@
+# Environment
+.env
+*.env
+
+# Model weights (too large for git)
+*.pt
+*.onnx
+*.bin
+*.ncnn
+best_ncnn_model/
+runs/
+
+# Datasets & zips (large files)
+*.zip
+My_Custom_Prints/
+My_Backgrounds/
+My_Custom_Labels/
+dataset/
+dataset_v3/
+
+# Private/local config
+.claude/
+
+# Personal files
+*.exe
+*.pptx
+WhatsApp*
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Drone Controller</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; touch-action:none; user-select:none; -webkit-user-select:none; }
+
+:root {
+  --blue:   #00d4ff;
+  --green:  #00ff88;
+  --red:    #ff3344;
+  --orange: #ff8800;
+  --bg:     #07070f;
+  --bg2:    #0d0d1a;
+  --bg3:    #111120;
+  --border: #1a1a2e;
+  --text:   #ccc;
+  --dim:    #444;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  height: 100dvh; width: 100vw;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+
+/* ── PREFLIGHT MODAL ── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.85);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 999;
+  backdrop-filter: blur(4px);
+}
+.modal {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+  width: 340px;
+  box-shadow: 0 0 60px rgba(0,212,255,0.1);
+}
+.modal h2 { color: var(--blue); font-size: 16px; letter-spacing: 2px; margin-bottom: 20px; }
+.check-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.check-item:last-of-type { border-bottom: none; }
+.check-icon { font-size: 18px; width: 24px; text-align: center; }
+.check-label { flex: 1; }
+.check-status { font-size: 11px; font-weight: 700; }
+.check-status.pass { color: var(--green); }
+.check-status.fail { color: var(--red); }
+.check-status.warn { color: var(--orange); }
+.modal-btns { display: flex; gap: 10px; margin-top: 20px; }
+.modal-btn {
+  flex: 1; padding: 12px; border: none; border-radius: 10px;
+  font-size: 13px; font-weight: 700; letter-spacing: 1px; cursor: pointer;
+}
+.modal-btn.cancel { background: var(--bg3); color: var(--dim); border: 1px solid var(--border); }
+.modal-btn.confirm { background: linear-gradient(135deg,#1a3a1a,#0d2a0d); color: var(--green); border: 1px solid #00ff8833; }
+.modal-btn.confirm:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── FAILSAFE BANNER ── */
+.failsafe-banner {
+  display: none;
+  background: var(--red);
+  color: #fff;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  padding: 6px;
+  animation: blink 0.5s infinite;
+  flex-shrink: 0;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* ── TOP BAR ── */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0; gap: 10px;
+}
+.logo { font-size: 16px; font-weight: 800; color: var(--blue); letter-spacing: 3px; flex-shrink:0; }
+.status-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.pill {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--bg3); border-radius: 20px;
+  padding: 4px 10px; font-size: 11px; border: 1px solid var(--border);
+}
+.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink:0; }
+.bat-track { width: 46px; height: 8px; background: #222; border-radius: 4px; overflow:hidden; border:1px solid #333; }
+.bat-fill  { height:100%; border-radius:4px; transition: width .5s, background .5s; }
+.signal { display:flex; gap:2px; align-items:flex-end; height:16px; }
+.sb { width:4px; border-radius:1px; transition: opacity .3s; }
+
+/* ── TELEMETRY ── */
+.telemetry {
+  display: flex; justify-content: center; gap: 0;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0; overflow-x: auto;
+}
+.telem-item {
+  text-align: center; padding: 6px 16px;
+  border-right: 1px solid var(--border); flex-shrink:0;
+}
+.telem-item:last-child { border-right: none; }
+.tl { font-size: 8px; color: var(--dim); text-transform:uppercase; letter-spacing:1px; }
+.tv { font-size: 17px; font-weight: 800; color: var(--blue); line-height: 1.2; }
+.tv.warn { color: var(--orange); }
+.tv.danger { color: var(--red); animation: blink .6s infinite; }
+.tu { font-size: 8px; color: #333; }
+
+/* ── LAYOUT ── */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* ── PANELS ── */
+.panel {
+  width: 185px; flex-shrink: 0;
+  background: var(--bg2);
+  display: flex; flex-direction: column;
+  padding: 12px; gap: 12px; overflow-y: auto;
+}
+.panel.left  { border-right: 1px solid var(--border); }
+.panel.right { border-left:  1px solid var(--border); }
+
+.plabel {
+  font-size: 9px; color: var(--dim);
+  text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 4px;
+}
+
+/* Mode buttons */
+.mode-row { display: flex; gap: 5px; }
+.mode-btn {
+  flex:1; padding: 6px 2px; border: 1px solid var(--border);
+  background: var(--bg3); color: var(--dim); border-radius: 7px;
+  font-size: 9px; cursor: pointer; text-align: center; transition: all .2s;
+  letter-spacing: .5px;
+}
+.mode-btn.active { background:#001a2e; color:var(--blue); border-color:#00d4ff33; }
+
+/* Sliders */
+.sl-group { display:flex; flex-direction:column; gap:4px; }
+.sl-row { display:flex; justify-content:space-between; font-size:10px; color:#666; }
+.sl-val { color: var(--blue); font-weight:700; }
+input[type=range] {
+  -webkit-appearance:none; width:100%; height:5px;
+  background: var(--border); border-radius:3px; outline:none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:16px; height:16px; border-radius:50%;
+  background: var(--blue); cursor:pointer; box-shadow:0 0 6px #00d4ff66;
+}
+
+/* Trim buttons */
+.trim-group { display:flex; flex-direction:column; gap:5px; }
+.trim-row { display:flex; align-items:center; gap:6px; }
+.trim-label { font-size:10px; color:#555; width:28px; }
+.trim-btns  { display:flex; gap:4px; }
+.trim-btn {
+  width:26px; height:26px; border-radius:6px;
+  background: var(--bg3); border:1px solid var(--border);
+  color: var(--text); font-size:14px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition: background .1s;
+}
+.trim-btn:active { background: var(--blue); color:#000; }
+.trim-val { font-size:10px; color: var(--blue); width:28px; text-align:center; font-weight:700; }
+.trim-reset {
+  font-size:9px; color:#333; cursor:pointer; text-decoration:underline;
+  text-align:center; padding:2px;
+}
+.trim-reset:active { color: var(--blue); }
+
+/* GPS */
+.gps-box {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px; font-size: 10px;
+  font-family: monospace;
+}
+.gps-row { display:flex; justify-content:space-between; margin-bottom:3px; }
+.gps-key { color: var(--dim); }
+.gps-val { color: var(--blue); font-weight:700; }
+
+/* ARM button */
+.arm-btn {
+  width:100%; padding:12px; border:none; border-radius:10px;
+  font-size:13px; font-weight:800; letter-spacing:2px; cursor:pointer;
+  transition: all .2s;
+  background: linear-gradient(135deg,#1a3a1a,#0d2a0d);
+  color: var(--green); border:1px solid #00ff8833;
+}
+.arm-btn.armed {
+  background: linear-gradient(135deg,#3a0d0d,#2a0505);
+  color: var(--red); border-color:#ff334433;
+  box-shadow: 0 0 16px #ff334422;
+  animation: armed-pulse 1.5s infinite;
+}
+@keyframes armed-pulse { 0%,100%{box-shadow:0 0 16px #ff334422} 50%{box-shadow:0 0 30px #ff334455} }
+
+/* RTH button */
+.rth-btn {
+  width:100%; padding:9px; border:none; border-radius:8px;
+  font-size:11px; font-weight:700; letter-spacing:1px; cursor:pointer;
+  background: linear-gradient(135deg,#1a1a00,#2a2a00);
+  color: var(--orange); border:1px solid #ff880033;
+  transition: all .2s;
+}
+.rth-btn:active { background:#332200; box-shadow:0 0 16px #ff880044; }
+
+/* Log */
+.log-box {
+  flex:1; background:#05050e; border:1px solid var(--border);
+  border-radius:8px; padding:6px; overflow-y:auto;
+  font-size:9px; font-family:monospace; color:#333; min-height:60px;
+}
+.ll { margin-bottom:2px; }
+.ll.ok   { color: var(--green); }
+.ll.err  { color: var(--red); }
+.ll.info { color: var(--blue); }
+.ll.warn { color: var(--orange); }
+
+/* WS input */
+.ws-input {
+  background: var(--bg3); border:1px solid var(--border);
+  color: #888; border-radius:6px; padding:5px 8px;
+  font-size:10px; width:100%; outline:none;
+}
+.connect-btn {
+  width:100%; padding:9px; border:none; border-radius:8px;
+  background: linear-gradient(135deg,#001a2e,#003366);
+  color: var(--blue); font-size:11px; font-weight:800;
+  cursor:pointer; border:1px solid #00d4ff22; letter-spacing:1px;
+  transition: all .2s;
+}
+.connect-btn:active { box-shadow:0 0 16px #00d4ff33; }
+
+/* Alt gauge */
+.alt-track { width:100%; height:7px; background:var(--border); border-radius:4px; overflow:hidden; }
+.alt-fill  { height:100%; border-radius:4px; background:linear-gradient(90deg,#0044ff,var(--blue)); transition:width .3s; }
+
+/* ── CENTER ── */
+.center-panel {
+  flex:1; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:14px;
+}
+
+/* Compass */
+.compass-wrap { position:relative; display:flex; align-items:center; justify-content:center; }
+.compass-ring {
+  width:140px; height:140px; border-radius:50%;
+  border:2px solid var(--border);
+  background: radial-gradient(circle, #0d1220 60%, var(--bg));
+  position:relative; display:flex; align-items:center; justify-content:center;
+}
+.compass-ring svg { position:absolute; top:0; left:0; width:100%; height:100%; }
+.compass-heading {
+  font-size:20px; font-weight:800; color:var(--blue); letter-spacing:1px; z-index:2;
+}
+.compass-dir {
+  position:absolute; font-size:8px; color:#444; font-weight:700;
+}
+.compass-dir.n { top:6px;  left:50%; transform:translateX(-50%); color:var(--red); }
+.compass-dir.s { bottom:6px; left:50%; transform:translateX(-50%); }
+.compass-dir.e { right:6px; top:50%; transform:translateY(-50%); }
+.compass-dir.w { left:6px;  top:50%; transform:translateY(-50%); }
+
+/* Horizon */
+.horizon {
+  width:130px; height:130px; border-radius:50%;
+  border:2px solid var(--border);
+  background: var(--bg);
+  position:relative; overflow:hidden;
+  display:flex; align-items:center; justify-content:center;
+}
+.h-sky  { position:absolute; width:100%; background:#001833; transition:all .1s; }
+.h-gnd  { position:absolute; width:100%; background:#1a0e00; transition:all .1s; }
+.h-line { position:absolute; width:100%; height:2px; background:linear-gradient(90deg,transparent,var(--blue) 20%,var(--blue) 80%,transparent); z-index:2; }
+.h-cross-h { position:absolute; width:36px; height:2px; background:var(--orange); z-index:3; }
+.h-cross-v { position:absolute; width:2px;  height:36px; background:var(--orange); z-index:3; }
+.h-pitch-label { position:absolute; z-index:3; font-size:8px; color:#444; }
+
+/* E-stop */
+.estop {
+  background: linear-gradient(135deg,#4a0000,#220000);
+  border:2px solid var(--red);
+  color: var(--red); font-size:12px; font-weight:800;
+  padding:11px 36px; border-radius:10px;
+  cursor:pointer; letter-spacing:2px;
+  box-shadow: 0 0 20px #ff334422;
+  transition: all .1s; flex-shrink:0;
+}
+.estop:active { background:var(--red); color:#fff; box-shadow:0 0 50px var(--red); }
+
+/* ── JOYSTICK AREA ── */
+.js-row {
+  display:flex; justify-content:space-between; align-items:center;
+  padding: 0 20px 10px; gap:10px; flex-shrink:0;
+}
+.js-wrap { display:flex; flex-direction:column; align-items:center; gap:5px; }
+.js-label { font-size:9px; color:#444; text-transform:uppercase; letter-spacing:1.5px; }
+.js-sublabel { font-size:8px; color:#2a2a3e; }
+canvas.joystick {
+  border-radius:50%;
+  display:block; cursor:pointer;
+}
+
+/* Center stats */
+.center-stats {
+  display:flex; flex-direction:column; align-items:center; gap:6px; flex:1;
+}
+.hz-display { font-size:20px; color:var(--blue); font-weight:800; }
+.pkt-display { font-size:9px; color:#333; }
+.failsafe-pill {
+  font-size:9px; padding:4px 10px; border-radius:20px;
+  font-weight:700; letter-spacing:1px;
+}
+.failsafe-pill.ok  { background:#001a0d; color:var(--green); border:1px solid #00ff8822; }
+.failsafe-pill.bad { background:#1a0000; color:var(--red);   border:1px solid #ff334422; animation:blink .5s infinite; }
+
+/* ── BOTTOM BAR ── */
+.bottombar {
+  display:flex; justify-content:center; gap:30px; align-items:center;
+  padding:5px 16px;
+  background:#05050e;
+  border-top:1px solid var(--border);
+  font-size:9px; color:#2a2a3e; flex-shrink:0; flex-wrap:wrap;
+}
+</style>
+</head>
+<body>
+
+<!-- PRE-FLIGHT MODAL -->
+<div class="modal-overlay" id="preflight-modal" style="display:none">
+  <div class="modal">
+    <h2>⚙ PRE-FLIGHT CHECK</h2>
+    <div class="check-item">
+      <span class="check-icon">📡</span>
+      <span class="check-label">WebSocket Connected</span>
+      <span class="check-status" id="chk-conn">—</span>
+    </div>
+    <div class="check-item">
+      <span class="check-icon">🔋</span>
+      <span class="check-label">Battery &gt; 20%</span>
+      <span class="check-status" id="chk-bat">—</span>
+    </div>
+    <div class="check-item">
+      <span class="check-icon">📶</span>
+      <span class="check-label">Signal Strength OK</span>
+      <span class="check-status" id="chk-sig">—</span>
+    </div>
+    <div class="check-item">
+      <span class="check-icon">🕹</span>
+      <span class="check-label">Throttle at Zero</span>
+      <span class="check-status" id="chk-thr">—</span>
+    </div>
+    <div class="check-item">
+      <span class="check-icon">✂️</span>
+      <span class="check-label">Trim Centered</span>
+      <span class="check-status" id="chk-trim">—</span>
+    </div>
+    <div class="modal-btns">
+      <button class="modal-btn cancel" onclick="closeChecklist()">CANCEL</button>
+      <button class="modal-btn confirm" id="chk-confirm" onclick="confirmArm()" disabled>ARM NOW</button>
+    </div>
+  </div>
+</div>
+
+<!-- FAILSAFE BANNER -->
+<div class="failsafe-banner" id="failsafe-banner">⚠ FAILSAFE — SIGNAL LOST — DISARMING</div>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="logo">⬡ DRONECTRL</div>
+  <div class="status-row">
+    <div class="pill">
+      <div class="dot" id="conn-dot" style="background:var(--red);box-shadow:0 0 5px var(--red)"></div>
+      <span id="conn-label">NO LINK</span>
+    </div>
+    <div class="pill">
+      <div class="signal">
+        <div class="sb" id="s1" style="height:3px;background:var(--blue)"></div>
+        <div class="sb" id="s2" style="height:6px;background:var(--blue)"></div>
+        <div class="sb" id="s3" style="height:9px;background:var(--blue)"></div>
+        <div class="sb" id="s4" style="height:12px;background:var(--blue)"></div>
+        <div class="sb" id="s5" style="height:15px;background:var(--blue)"></div>
+      </div>
+      <span id="rssi-val">--</span>dBm
+    </div>
+    <div class="pill">
+      🔋
+      <div class="bat-track"><div class="bat-fill" id="bat-fill" style="width:80%;background:var(--green)"></div></div>
+      <span id="bat-val">80%</span>
+    </div>
+    <div class="pill" id="arm-status-pill" style="background:#001a0d;border-color:#00ff8822;color:var(--green)">
+      DISARMED
+    </div>
+    <div class="pill" id="mode-status-pill">STAB</div>
+  </div>
+</div>
+
+<!-- TELEMETRY STRIP -->
+<div class="telemetry">
+  <div class="telem-item"><div class="tl">Altitude</div><div class="tv" id="t-alt">0.0</div><div class="tu">m</div></div>
+  <div class="telem-item"><div class="tl">Throttle</div><div class="tv" id="t-thr">0</div><div class="tu">%</div></div>
+  <div class="telem-item"><div class="tl">Yaw</div><div class="tv" id="t-yaw">0</div><div class="tu">°/s</div></div>
+  <div class="telem-item"><div class="tl">Pitch</div><div class="tv" id="t-pit">0</div><div class="tu">°</div></div>
+  <div class="telem-item"><div class="tl">Roll</div><div class="tv" id="t-rol">0</div><div class="tu">°</div></div>
+  <div class="telem-item"><div class="tl">Speed</div><div class="tv" id="t-spd">0.0</div><div class="tu">km/h</div></div>
+  <div class="telem-item"><div class="tl">Heading</div><div class="tv" id="t-hdg">0</div><div class="tu">°</div></div>
+  <div class="telem-item"><div class="tl">Uptime</div><div class="tv" id="t-uptime">00:00</div><div class="tu">mm:ss</div></div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- LEFT PANEL -->
+  <div class="panel left">
+
+    <div>
+      <div class="plabel">Flight Mode</div>
+      <div class="mode-row">
+        <div class="mode-btn active" onclick="setMode(this,'STAB')">STAB</div>
+        <div class="mode-btn" onclick="setMode(this,'ACRO')">ACRO</div>
+        <div class="mode-btn" onclick="setMode(this,'ALTH')">ALT H</div>
+      </div>
+    </div>
+
+    <div class="sl-group">
+      <div class="plabel">Max Throttle</div>
+      <div class="sl-row"><span>0%</span><span class="sl-val" id="v-maxthr">80%</span><span>100%</span></div>
+      <input type="range" min="10" max="100" value="80" id="s-maxthr"
+        oninput="document.getElementById('v-maxthr').textContent=this.value+'%'">
+    </div>
+
+    <div class="sl-group">
+      <div class="plabel">Max Yaw Rate</div>
+      <div class="sl-row"><span>Slow</span><span class="sl-val" id="v-maxyaw">50%</span><span>Fast</span></div>
+      <input type="range" min="10" max="100" value="50" id="s-maxyaw"
+        oninput="document.getElementById('v-maxyaw').textContent=this.value+'%'">
+    </div>
+
+    <div class="sl-group">
+      <div class="plabel">Expo / Sensitivity</div>
+      <div class="sl-row"><span>Linear</span><span class="sl-val" id="v-expo">30%</span><span>Soft</span></div>
+      <input type="range" min="0" max="80" value="30" id="s-expo"
+        oninput="document.getElementById('v-expo').textContent=this.value+'%'">
+    </div>
+
+    <div class="sl-group">
+      <div class="plabel">Camera Tilt</div>
+      <div class="sl-row"><span>↓Down</span><span class="sl-val" id="v-cam">0°</span><span>Up↑</span></div>
+      <input type="range" min="-90" max="90" value="0" id="s-cam"
+        oninput="document.getElementById('v-cam').textContent=this.value+'°'; sendCmd()">
+    </div>
+
+    <div class="sl-group">
+      <div class="plabel">Alt Limit</div>
+      <div class="sl-row"><span>0m</span><span class="sl-val" id="v-altlim">50m</span><span>120m</span></div>
+      <input type="range" min="5" max="120" value="50" id="s-altlim"
+        oninput="document.getElementById('v-altlim').textContent=this.value+'m'">
+    </div>
+
+    <button class="arm-btn" id="arm-btn" onclick="openChecklist()">ARM</button>
+    <button class="rth-btn" id="rth-btn" onclick="returnToHome()">↩ RETURN TO HOME</button>
+
+  </div>
+
+  <!-- CENTER -->
+  <div class="center-panel">
+
+    <!-- Compass + Horizon side by side -->
+    <div style="display:flex;gap:20px;align-items:center">
+
+      <!-- Compass -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+        <div style="font-size:8px;color:var(--dim);letter-spacing:1px">HEADING</div>
+        <div class="compass-ring">
+          <svg viewBox="0 0 140 140" id="compass-svg">
+            <!-- tick marks -->
+            <g stroke="#1a1a2e" stroke-width="1">
+              <line x1="70" y1="8"  x2="70" y2="18"/>
+              <line x1="70" y1="122" x2="70" y2="132"/>
+              <line x1="8"  y1="70" x2="18"  y2="70"/>
+              <line x1="122" y1="70" x2="132" y2="70"/>
+            </g>
+            <!-- needle -->
+            <g id="compass-needle" transform="rotate(0,70,70)">
+              <polygon points="70,20 65,70 70,65 75,70" fill="var(--red)" opacity="0.9"/>
+              <polygon points="70,120 65,70 70,75 75,70" fill="#444" opacity="0.7"/>
+            </g>
+          </svg>
+          <div class="compass-dir n">N</div>
+          <div class="compass-dir s">S</div>
+          <div class="compass-dir e">E</div>
+          <div class="compass-dir w">W</div>
+          <div class="compass-heading" id="compass-deg">0°</div>
+        </div>
+      </div>
+
+      <!-- Artificial Horizon -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+        <div style="font-size:8px;color:var(--dim);letter-spacing:1px">HORIZON</div>
+        <div class="horizon" id="horizon-wrap">
+          <div class="h-sky"  id="h-sky"  style="top:0;height:50%"></div>
+          <div class="h-gnd"  id="h-gnd"  style="bottom:0;height:50%"></div>
+          <div class="h-line" id="h-line"></div>
+          <div class="h-cross-h"></div>
+          <div class="h-cross-v"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- GPS -->
+    <div class="gps-box" style="width:300px">
+      <div class="gps-row">
+        <span class="gps-key">LAT</span><span class="gps-val" id="gps-lat">---.------</span>
+        <span class="gps-key" style="margin-left:16px">LON</span><span class="gps-val" id="gps-lon">---.------</span>
+      </div>
+      <div class="gps-row">
+        <span class="gps-key">SATS</span><span class="gps-val" id="gps-sats">--</span>
+        <span class="gps-key" style="margin-left:16px">FIX</span><span class="gps-val" id="gps-fix" style="color:var(--dim)">NO FIX</span>
+        <span class="gps-key" style="margin-left:16px">HOME</span><span class="gps-val" id="gps-home" style="color:var(--dim)">NOT SET</span>
+      </div>
+    </div>
+
+    <!-- E-STOP -->
+    <button class="estop" onclick="emergencyStop()">⚠ EMERGENCY STOP</button>
+
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="panel right">
+
+    <div>
+      <div class="plabel">Pi WebSocket IP</div>
+      <input class="ws-input" type="text" id="ws-url" value="ws://192.168.1.100:8765">
+    </div>
+    <button class="connect-btn" onclick="connectWS()">⚡ CONNECT</button>
+
+    <!-- Trim -->
+    <div class="trim-group">
+      <div class="plabel">Stick Trim</div>
+      <div class="trim-row">
+        <span class="trim-label" style="font-size:9px">Pitch</span>
+        <div class="trim-btns">
+          <button class="trim-btn" onclick="adjustTrim('pitch',-1)">−</button>
+          <button class="trim-btn" onclick="adjustTrim('pitch',+1)">+</button>
+        </div>
+        <span class="trim-val" id="trim-pitch">0</span>
+      </div>
+      <div class="trim-row">
+        <span class="trim-label" style="font-size:9px">Roll</span>
+        <div class="trim-btns">
+          <button class="trim-btn" onclick="adjustTrim('roll',-1)">−</button>
+          <button class="trim-btn" onclick="adjustTrim('roll',+1)">+</button>
+        </div>
+        <span class="trim-val" id="trim-roll">0</span>
+      </div>
+      <div class="trim-row">
+        <span class="trim-label" style="font-size:9px">Yaw</span>
+        <div class="trim-btns">
+          <button class="trim-btn" onclick="adjustTrim('yaw',-1)">−</button>
+          <button class="trim-btn" onclick="adjustTrim('yaw',+1)">+</button>
+        </div>
+        <span class="trim-val" id="trim-yaw">0</span>
+      </div>
+      <div class="trim-reset" onclick="resetTrim()">RESET TRIM</div>
+    </div>
+
+    <!-- Altitude gauge -->
+    <div>
+      <div class="plabel">Live Altitude</div>
+      <div class="alt-track"><div class="alt-fill" id="alt-fill" style="width:0%"></div></div>
+      <div class="sl-row" style="margin-top:4px">
+        <span>0m</span>
+        <span style="color:var(--blue);font-weight:800" id="alt-disp">0.0m</span>
+        <span id="alt-lim-disp">50m</span>
+      </div>
+    </div>
+
+    <!-- Failsafe status -->
+    <div>
+      <div class="plabel">Failsafe</div>
+      <div class="failsafe-pill ok" id="fs-pill">✓ LINK OK</div>
+    </div>
+
+    <!-- Log -->
+    <div class="plabel">Flight Log</div>
+    <div class="log-box" id="log-box">
+      <div class="ll info">[BOOT] Controller v2.0 ready</div>
+      <div class="ll">[INFO] Enter Pi IP → Connect</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- JOYSTICK ROW -->
+<div class="js-row">
+
+  <!-- LEFT JOYSTICK — Throttle (sticky Y) + Yaw (spring X) -->
+  <div class="js-wrap">
+    <div class="js-label">Throttle / Yaw</div>
+    <div class="js-sublabel">▲ UP</div>
+    <canvas class="joystick" id="js-left" width="150" height="150"></canvas>
+    <div class="js-sublabel">◀ YAW ▶</div>
+  </div>
+
+  <!-- CENTER STATS -->
+  <div class="center-stats">
+    <div style="font-size:8px;color:#2a2a3e;letter-spacing:2px">SEND RATE</div>
+    <div class="hz-display" id="send-hz">-- Hz</div>
+    <div class="pkt-display">Packets: <span id="pkt-count">0</span></div>
+    <div class="failsafe-pill ok" id="fs-pill-js">✓ OK</div>
+    <div style="font-size:8px;color:#2a2a3e;margin-top:4px">THROTTLE</div>
+    <div style="font-size:16px;font-weight:800;color:var(--orange)" id="thr-big">0%</div>
+  </div>
+
+  <!-- RIGHT JOYSTICK — Pitch + Roll (both spring) -->
+  <div class="js-wrap">
+    <div class="js-label">Pitch / Roll</div>
+    <div class="js-sublabel">▲ FWD</div>
+    <canvas class="joystick" id="js-right" width="150" height="150"></canvas>
+    <div class="js-sublabel">◀ ROLL ▶</div>
+  </div>
+
+</div>
+
+<!-- BOTTOM BAR -->
+<div class="bottombar">
+  <span>DRONECTRL v2.0</span>
+  <span>·</span>
+  <span>ELRS 900MHz</span>
+  <span>·</span>
+  <span>YOLOv11x Detection</span>
+  <span>·</span>
+  <span id="time-disp">--:--:--</span>
+  <span>·</span>
+  <span id="flight-time-disp">Flight: 00:00</span>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════════
+const S = {
+  throttle: 0, yaw: 0, pitch: 0, roll: 0,
+  armed: false, mode: 'STAB',
+  trim: { pitch: 0, roll: 0, yaw: 0 },
+  connected: false,
+  battery: 80, rssi: -65,
+  altitude: 0, speed: 0, heading: 0,
+  gps: { lat: null, lon: null, sats: 0, fix: false },
+  homeSet: false,
+  failsafe: false,
+};
+
+let ws = null;
+let packetCount = 0;
+let sendInterval = null;
+let hzCounter = 0, lastHz = Date.now();
+let lastPktTime = 0;
+let flightTimer = null, flightSecs = 0;
+let bootTime = Date.now();
+let heading = 0; // cumulative heading for compass
+
+// ════════════════════════════════════════════════════
+// JOYSTICK ENGINE
+// ════════════════════════════════════════════════════
+function makeJoystick(canvasId, onMove, opts = {}) {
+  // opts.stickyY: throttle axis stays on release (no spring)
+  // opts.color: accent color
+  const canvas = document.getElementById(canvasId);
+  const ctx    = canvas.getContext('2d');
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const maxR = cx - 18, knobR = 20;
+  const color = opts.color || '#00d4ff';
+
+  let active = false, kx = cx, ky = cy, tid = null;
+
+  function applyExpo(v) {
+    const e = parseInt(document.getElementById('s-expo').value) / 100;
+    return v * (1 - e) + Math.sign(v) * v * v * e;
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Background
+    const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxR);
+    bg.addColorStop(0, '#111120');
+    bg.addColorStop(1, '#0a0a15');
+    ctx.beginPath(); ctx.arc(cx, cy, maxR + 6, 0, Math.PI*2);
+    ctx.fillStyle = bg; ctx.fill();
+
+    // Outer ring
+    ctx.beginPath(); ctx.arc(cx, cy, maxR, 0, Math.PI*2);
+    ctx.strokeStyle = active ? color + '44' : '#1a1a2e';
+    ctx.lineWidth = 2; ctx.stroke();
+
+    // Zone rings
+    [0.33, 0.66, 1.0].forEach(f => {
+      ctx.beginPath(); ctx.arc(cx, cy, maxR * f, 0, Math.PI*2);
+      ctx.strokeStyle = '#10101e'; ctx.lineWidth = 1; ctx.stroke();
+    });
+
+    // Crosshair
+    ctx.strokeStyle = '#14142a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(cx, cy-maxR); ctx.lineTo(cx, cy+maxR); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx-maxR, cy); ctx.lineTo(cx+maxR, cy); ctx.stroke();
+
+    // Sticky Y indicator (left stick only)
+    if (opts.stickyY) {
+      const stickyLineY = ky;
+      ctx.strokeStyle = color + '18';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3,4]);
+      ctx.beginPath(); ctx.moveTo(cx-maxR, stickyLineY); ctx.lineTo(cx+maxR, stickyLineY);
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+
+    // Line from center to knob
+    if (active) {
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(kx, ky);
+      ctx.strokeStyle = color + '33'; ctx.lineWidth = 2; ctx.stroke();
+    }
+
+    // Glow
+    if (active) {
+      ctx.beginPath(); ctx.arc(kx, ky, knobR + 8, 0, Math.PI*2);
+      ctx.fillStyle = color + '12'; ctx.fill();
+    }
+
+    // Knob
+    const kg = ctx.createRadialGradient(kx-4, ky-4, 2, kx, ky, knobR);
+    kg.addColorStop(0, active ? '#ffffff' : color);
+    kg.addColorStop(0.4, active ? color : color + 'cc');
+    kg.addColorStop(1, active ? color + '88' : '#003');
+    ctx.beginPath(); ctx.arc(kx, ky, knobR, 0, Math.PI*2);
+    ctx.fillStyle = kg; ctx.fill();
+    ctx.strokeStyle = active ? color : color + '55';
+    ctx.lineWidth = 1.5; ctx.stroke();
+
+    // Center dot
+    ctx.beginPath(); ctx.arc(kx, ky, 4, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fill();
+
+    // Center crosshair (neutral reference)
+    ctx.strokeStyle = '#1e1e3a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI*2); ctx.stroke();
+  }
+
+  function getPos(e) {
+    const r = canvas.getBoundingClientRect();
+    if (e.touches) {
+      for (let t of e.touches) {
+        if (t.identifier === tid || tid === null)
+          return { x: t.clientX - r.left, y: t.clientY - r.top };
+      }
+      return null;
+    }
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  function update(pos) {
+    if (!pos) return;
+    let dx = pos.x - cx, dy = pos.y - cy;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist > maxR) { dx = dx/dist*maxR; dy = dy/dist*maxR; }
+    kx = cx + dx; ky = cy + dy;
+    const raw_x = dx / maxR;
+    const raw_y = -dy / maxR;
+    onMove(applyExpo(raw_x), applyExpo(raw_y));
+    draw();
+  }
+
+  function start(e) {
+    e.preventDefault();
+    if (e.touches) tid = e.changedTouches[0].identifier;
+    active = true;
+    update(getPos(e));
+  }
+  function move(e) {
+    e.preventDefault();
+    if (!active) return;
+    update(getPos(e));
+  }
+  function end(e) {
+    e.preventDefault();
+    active = false; tid = null;
+    if (opts.stickyY) {
+      // Only X (yaw) springs back, Y (throttle) stays
+      kx = cx;
+      const raw_x = 0;
+      const raw_y = -(ky - cy) / maxR;
+      onMove(applyExpo(raw_x), applyExpo(raw_y));
+    } else {
+      kx = cx; ky = cy;
+      onMove(0, 0);
+    }
+    draw();
+  }
+
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove',  move,  { passive: false });
+  canvas.addEventListener('touchend',   end,   { passive: false });
+  canvas.addEventListener('mousedown',  start);
+  window.addEventListener('mousemove',  e => { if (active) move(e); });
+  window.addEventListener('mouseup',    end);
+
+  draw();
+}
+
+// LEFT: throttle (sticky Y) + yaw (spring X)
+makeJoystick('js-left', (x, y) => {
+  S.yaw      = Math.round(x * 100);
+  S.throttle = Math.round(((y + 1) / 2) * 100); // map -1..1 → 0..100
+  document.getElementById('t-thr').textContent  = S.throttle;
+  document.getElementById('t-yaw').textContent  = S.yaw;
+  document.getElementById('thr-big').textContent = S.throttle + '%';
+  const color = S.throttle < 10 ? 'var(--dim)' : S.throttle > 80 ? 'var(--red)' : 'var(--orange)';
+  document.getElementById('thr-big').style.color = color;
+}, { stickyY: true, color: '#ff8800' });
+
+// RIGHT: pitch + roll (both spring)
+makeJoystick('js-right', (x, y) => {
+  S.roll  = Math.round(x * 100);
+  S.pitch = Math.round(y * 100);
+  document.getElementById('t-pit').textContent = S.pitch;
+  document.getElementById('t-rol').textContent = S.roll;
+  updateHorizon(S.roll, S.pitch);
+}, { stickyY: false, color: '#00d4ff' });
+
+// ════════════════════════════════════════════════════
+// HORIZON
+// ════════════════════════════════════════════════════
+function updateHorizon(roll, pitch) {
+  const wrap = document.getElementById('horizon-wrap');
+  const line = document.getElementById('h-line');
+  const sky  = document.getElementById('h-sky');
+  const gnd  = document.getElementById('h-gnd');
+  const rollDeg = roll * 0.45;
+  const pitchPx = pitch * 0.5;
+  const mid = 50 + pitchPx * 0.5;
+  wrap.style.setProperty('--roll', rollDeg + 'deg');
+  line.style.transform = `rotate(${rollDeg}deg) translateY(${pitchPx}px)`;
+  sky.style.height  = Math.max(0, Math.min(100, mid)) + '%';
+  gnd.style.height  = Math.max(0, Math.min(100, 100 - mid)) + '%';
+}
+
+// ════════════════════════════════════════════════════
+// COMPASS
+// ════════════════════════════════════════════════════
+function updateCompass(hdg) {
+  heading = hdg % 360;
+  document.getElementById('compass-needle').setAttribute('transform', `rotate(${heading},70,70)`);
+  document.getElementById('compass-deg').textContent = Math.round(heading) + '°';
+  document.getElementById('t-hdg').textContent = Math.round(heading);
+}
+
+// ════════════════════════════════════════════════════
+// WEBSOCKET
+// ════════════════════════════════════════════════════
+function log(msg, type = '') {
+  const box = document.getElementById('log-box');
+  const el  = document.createElement('div');
+  el.className = 'll ' + type;
+  const t = new Date().toLocaleTimeString('en', { hour12: false });
+  el.textContent = `[${t}] ${msg}`;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+  if (box.children.length > 80) box.removeChild(box.children[0]);
+}
+
+function connectWS() {
+  const url = document.getElementById('ws-url').value.trim();
+  if (ws) { try { ws.close(); } catch {} ws = null; }
+  log('Connecting → ' + url, 'info');
+  try {
+    ws = new WebSocket(url);
+    ws.onopen = () => {
+      S.connected = true;
+      setConnStatus(true);
+      log('Link established', 'ok');
+      startSending();
+      lastPktTime = Date.now();
+    };
+    ws.onclose = () => {
+      S.connected = false;
+      setConnStatus(false);
+      log('Link lost', 'err');
+      stopSending();
+      if (S.armed) triggerFailsafe();
+    };
+    ws.onerror = () => log('Connection error', 'err');
+    ws.onmessage = e => {
+      try { handleTelemetry(JSON.parse(e.data)); } catch {}
+      lastPktTime = Date.now();
+    };
+  } catch { log('Bad URL', 'err'); }
+}
+
+function setConnStatus(ok) {
+  const dot = document.getElementById('conn-dot');
+  const lbl = document.getElementById('conn-label');
+  dot.style.background   = ok ? 'var(--green)' : 'var(--red)';
+  dot.style.boxShadow    = ok ? '0 0 5px var(--green)' : '0 0 5px var(--red)';
+  lbl.textContent        = ok ? 'LINKED' : 'NO LINK';
+}
+
+// ════════════════════════════════════════════════════
+// PACKET BUILDER + EXPO
+// ════════════════════════════════════════════════════
+function buildPacket() {
+  const maxThr = parseInt(document.getElementById('s-maxthr').value) / 100;
+  const maxYaw = parseInt(document.getElementById('s-maxyaw').value) / 100;
+  return {
+    type:     'ctrl',
+    throttle: Math.round(S.throttle * maxThr),
+    yaw:      Math.round((S.yaw + S.trim.yaw)   * maxYaw),
+    pitch:    Math.round(S.pitch + S.trim.pitch),
+    roll:     Math.round(S.roll  + S.trim.roll),
+    armed:    S.armed,
+    mode:     S.mode,
+    camTilt:  parseInt(document.getElementById('s-cam').value),
+    altLimit: parseInt(document.getElementById('s-altlim').value),
+    rth:      false,
+    ts:       Date.now(),
+  };
+}
+
+function sendCmd(overrides = {}) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ ...buildPacket(), ...overrides }));
+  packetCount++;
+  hzCounter++;
+  document.getElementById('pkt-count').textContent = packetCount;
+}
+
+function startSending() { stopSending(); sendInterval = setInterval(() => sendCmd(), 50); }
+function stopSending()  { if (sendInterval) { clearInterval(sendInterval); sendInterval = null; } }
+
+// Hz counter
+setInterval(() => {
+  const elapsed = (Date.now() - lastHz) / 1000;
+  const hz = Math.round(hzCounter / elapsed);
+  document.getElementById('send-hz').textContent = S.connected ? hz + ' Hz' : '-- Hz';
+  hzCounter = 0; lastHz = Date.now();
+}, 1000);
+
+// ════════════════════════════════════════════════════
+// FAILSAFE — auto disarm if link drops while armed
+// ════════════════════════════════════════════════════
+setInterval(() => {
+  if (!S.connected || !S.armed) return;
+  const age = Date.now() - lastPktTime;
+  if (age > 2000) triggerFailsafe();
+}, 500);
+
+function triggerFailsafe() {
+  S.failsafe = true;
+  S.armed    = false;
+  document.getElementById('arm-btn').textContent = 'ARM';
+  document.getElementById('arm-btn').classList.remove('armed');
+  document.getElementById('failsafe-banner').style.display = 'block';
+  document.getElementById('fs-pill').className    = 'failsafe-pill bad';
+  document.getElementById('fs-pill').textContent  = '✗ FAILSAFE!';
+  document.getElementById('fs-pill-js').className = 'failsafe-pill bad';
+  document.getElementById('fs-pill-js').textContent = '✗ FS!';
+  updateArmStatus();
+  log('!!! FAILSAFE TRIGGERED !!!', 'err');
+  for (let i = 0; i < 5; i++) setTimeout(() => sendCmd({ armed: false, throttle: 0 }), i * 30);
+}
+
+function clearFailsafe() {
+  S.failsafe = false;
+  document.getElementById('failsafe-banner').style.display = 'none';
+  document.getElementById('fs-pill').className   = 'failsafe-pill ok';
+  document.getElementById('fs-pill').textContent = '✓ LINK OK';
+  document.getElementById('fs-pill-js').className   = 'failsafe-pill ok';
+  document.getElementById('fs-pill-js').textContent = '✓ OK';
+}
+
+// ════════════════════════════════════════════════════
+// PRE-FLIGHT CHECKLIST
+// ════════════════════════════════════════════════════
+function openChecklist() {
+  if (S.armed) { disarm(); return; }
+
+  // Run checks
+  const checks = {
+    conn:  S.connected,
+    bat:   S.battery > 20,
+    sig:   S.rssi > -80,
+    thr:   S.throttle < 5,
+    trim:  S.trim.pitch === 0 && S.trim.roll === 0 && S.trim.yaw === 0,
+  };
+
+  const set = (id, pass, failMsg, warnMsg) => {
+    const el = document.getElementById(id);
+    if (pass === true)  { el.textContent = 'PASS'; el.className = 'check-status pass'; }
+    else if (pass === 'warn') { el.textContent = warnMsg || 'WARN'; el.className = 'check-status warn'; }
+    else                { el.textContent = failMsg || 'FAIL'; el.className = 'check-status fail'; }
+  };
+
+  set('chk-conn', checks.conn,  'NOT CONNECTED');
+  set('chk-bat',  checks.bat,   'LOW BATTERY: ' + S.battery + '%');
+  set('chk-sig',  checks.sig,   'WEAK: ' + S.rssi + 'dBm');
+  set('chk-thr',  checks.thr,   'THROTTLE UP! SET TO 0');
+  set('chk-trim', checks.trim ? true : 'warn', null, 'TRIM NOT ZERO');
+
+  const allCriticalPass = checks.conn && checks.bat && checks.thr;
+  document.getElementById('chk-confirm').disabled = !allCriticalPass;
+
+  document.getElementById('preflight-modal').style.display = 'flex';
+}
+
+function closeChecklist() {
+  document.getElementById('preflight-modal').style.display = 'none';
+}
+
+function confirmArm() {
+  closeChecklist();
+  arm();
+}
+
+function arm() {
+  S.armed = true;
+  S.failsafe = false;
+  clearFailsafe();
+  document.getElementById('arm-btn').textContent = 'DISARM';
+  document.getElementById('arm-btn').classList.add('armed');
+  updateArmStatus();
+  if (!S.homeSet && S.gps.fix) {
+    S.homeSet = true;
+    document.getElementById('gps-home').textContent = 'SET';
+    document.getElementById('gps-home').style.color = 'var(--green)';
+    log('Home position locked', 'ok');
+  }
+  startFlightTimer();
+  log('*** ARMED ***', 'err');
+  sendCmd();
+}
+
+function disarm() {
+  S.armed = false;
+  document.getElementById('arm-btn').textContent = 'ARM';
+  document.getElementById('arm-btn').classList.remove('armed');
+  updateArmStatus();
+  stopFlightTimer();
+  log('Disarmed', 'ok');
+  sendCmd();
+}
+
+function updateArmStatus() {
+  const pill = document.getElementById('arm-status-pill');
+  pill.textContent   = S.armed ? 'ARMED' : 'DISARMED';
+  pill.style.background  = S.armed ? '#1a0000' : '#001a0d';
+  pill.style.borderColor = S.armed ? '#ff334422' : '#00ff8822';
+  pill.style.color       = S.armed ? 'var(--red)' : 'var(--green)';
+}
+
+// ════════════════════════════════════════════════════
+// EMERGENCY STOP
+// ════════════════════════════════════════════════════
+function emergencyStop() {
+  S.throttle = 0;
+  disarm();
+  log('!!! EMERGENCY STOP !!!', 'err');
+  for (let i = 0; i < 8; i++)
+    setTimeout(() => sendCmd({ armed: false, throttle: 0 }), i * 20);
+}
+
+// ════════════════════════════════════════════════════
+// RETURN TO HOME
+// ════════════════════════════════════════════════════
+function returnToHome() {
+  if (!S.armed) { log('Arm first to RTH', 'warn'); return; }
+  if (!S.homeSet) { log('No home position set', 'warn'); return; }
+  log('RTH activated', 'warn');
+  sendCmd({ rth: true });
+}
+
+// ════════════════════════════════════════════════════
+// MODE
+// ════════════════════════════════════════════════════
+function setMode(el, mode) {
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  S.mode = mode;
+  document.getElementById('mode-status-pill').textContent = mode;
+  log('Mode → ' + mode, 'info');
+  sendCmd();
+}
+
+// ════════════════════════════════════════════════════
+// TRIM
+// ════════════════════════════════════════════════════
+function adjustTrim(axis, delta) {
+  S.trim[axis] = Math.max(-20, Math.min(20, S.trim[axis] + delta));
+  document.getElementById('trim-' + axis).textContent = S.trim[axis];
+  sendCmd();
+}
+function resetTrim() {
+  ['pitch','roll','yaw'].forEach(a => {
+    S.trim[a] = 0;
+    document.getElementById('trim-' + a).textContent = '0';
+  });
+  log('Trim reset', 'info');
+  sendCmd();
+}
+
+// ════════════════════════════════════════════════════
+// TELEMETRY
+// ════════════════════════════════════════════════════
+function handleTelemetry(d) {
+  if (S.failsafe) clearFailsafe();
+  lastPktTime = Date.now();
+
+  if (d.altitude !== undefined) {
+    S.altitude = d.altitude;
+    const lim  = parseInt(document.getElementById('s-altlim').value);
+    const pct  = Math.min(100, (d.altitude / lim) * 100);
+    document.getElementById('t-alt').textContent = d.altitude.toFixed(1);
+    document.getElementById('alt-fill').style.width = pct + '%';
+    document.getElementById('alt-disp').textContent  = d.altitude.toFixed(1) + 'm';
+    document.getElementById('alt-lim-disp').textContent = lim + 'm';
+    const altEl = document.getElementById('t-alt');
+    altEl.className = 'tv' + (d.altitude > lim * 0.9 ? ' danger' : d.altitude > lim * 0.75 ? ' warn' : '');
+  }
+  if (d.battery !== undefined) {
+    S.battery = d.battery;
+    const fill = document.getElementById('bat-fill');
+    fill.style.width = d.battery + '%';
+    fill.style.background = d.battery < 20 ? 'var(--red)' : d.battery < 40 ? 'var(--orange)' : 'var(--green)';
+    document.getElementById('bat-val').textContent = d.battery + '%';
+    if (d.battery < 15) { log('CRITICAL BATTERY ' + d.battery + '%', 'err'); }
+    else if (d.battery < 25) { log('Low battery ' + d.battery + '%', 'warn'); }
+  }
+  if (d.rssi !== undefined) {
+    S.rssi = d.rssi;
+    document.getElementById('rssi-val').textContent = d.rssi;
+    updateSignalBars(d.rssi);
+  }
+  if (d.speed   !== undefined) document.getElementById('t-spd').textContent = d.speed.toFixed(1);
+  if (d.heading !== undefined) updateCompass(d.heading);
+  if (d.pitch   !== undefined) { document.getElementById('t-pit').textContent = d.pitch.toFixed(1); }
+  if (d.roll    !== undefined) { document.getElementById('t-rol').textContent = d.roll.toFixed(1); updateHorizon(d.roll, d.pitch||0); }
+  if (d.gps) {
+    S.gps = { ...S.gps, ...d.gps };
+    document.getElementById('gps-lat').textContent  = S.gps.lat ? S.gps.lat.toFixed(6) : '---.------';
+    document.getElementById('gps-lon').textContent  = S.gps.lon ? S.gps.lon.toFixed(6) : '---.------';
+    document.getElementById('gps-sats').textContent = S.gps.sats;
+    const fixEl = document.getElementById('gps-fix');
+    fixEl.textContent   = S.gps.fix ? '3D FIX' : 'NO FIX';
+    fixEl.style.color   = S.gps.fix ? 'var(--green)' : 'var(--dim)';
+  }
+}
+
+function updateSignalBars(rssi) {
+  const level = rssi > -50 ? 5 : rssi > -60 ? 4 : rssi > -70 ? 3 : rssi > -80 ? 2 : 1;
+  const colors = level <= 1 ? 'var(--red)' : level <= 2 ? 'var(--orange)' : 'var(--blue)';
+  [1,2,3,4,5].forEach(i => {
+    const b = document.getElementById('s'+i);
+    b.style.opacity = i <= level ? '1' : '0.12';
+    b.style.background = colors;
+  });
+}
+
+// ════════════════════════════════════════════════════
+// FLIGHT TIMER
+// ════════════════════════════════════════════════════
+function startFlightTimer() {
+  stopFlightTimer();
+  flightSecs = 0;
+  flightTimer = setInterval(() => {
+    flightSecs++;
+    const m = String(Math.floor(flightSecs/60)).padStart(2,'0');
+    const s = String(flightSecs%60).padStart(2,'0');
+    document.getElementById('flight-time-disp').textContent = 'Flight: ' + m + ':' + s;
+  }, 1000);
+}
+function stopFlightTimer() { if (flightTimer) { clearInterval(flightTimer); flightTimer = null; } }
+
+// ════════════════════════════════════════════════════
+// KEYBOARD (PC testing)
+// ════════════════════════════════════════════════════
+const keys = {};
+document.addEventListener('keydown', e => { keys[e.key] = true; if (e.key===' ') emergencyStop(); });
+document.addEventListener('keyup',   e => { keys[e.key] = false; });
+setInterval(() => {
+  if (!S.connected) return;
+  if (keys['ArrowUp'])    S.throttle = Math.min(100, S.throttle + 1);
+  if (keys['ArrowDown'])  S.throttle = Math.max(0,   S.throttle - 2);
+  if (keys['ArrowLeft'])  S.yaw = Math.max(-100, S.yaw - 5);
+  if (keys['ArrowRight']) S.yaw = Math.min(100,  S.yaw + 5);
+  if (!keys['ArrowLeft'] && !keys['ArrowRight']) S.yaw = Math.round(S.yaw * 0.7);
+  document.getElementById('t-thr').textContent  = S.throttle;
+  document.getElementById('t-yaw').textContent  = S.yaw;
+  document.getElementById('thr-big').textContent = S.throttle + '%';
+}, 50);
+
+// ════════════════════════════════════════════════════
+// CLOCKS & UPTIME
+// ════════════════════════════════════════════════════
+setInterval(() => {
+  document.getElementById('time-disp').textContent =
+    new Date().toLocaleTimeString('en', { hour12: false });
+  const up = Math.floor((Date.now() - bootTime) / 1000);
+  const m  = String(Math.floor(up/60)).padStart(2,'0');
+  const s  = String(up%60).padStart(2,'0');
+  document.getElementById('t-uptime').textContent = m + ':' + s;
+}, 1000);
+
+// ════════════════════════════════════════════════════
+// SIM TELEMETRY (testing without drone)
+// ════════════════════════════════════════════════════
+let simAlt = 0, simHdg = 0;
+setInterval(() => {
+  if (!S.connected) return;
+  simAlt += (S.throttle - 45) * 0.008;
+  simAlt  = Math.max(0, Math.min(120, simAlt));
+  simHdg  = (simHdg + S.yaw * 0.1 + 360) % 360;
+  handleTelemetry({
+    altitude: simAlt,
+    speed:    Math.abs(S.pitch) * 0.4,
+    heading:  simHdg,
+    pitch:    S.pitch * 0.3,
+    roll:     S.roll  * 0.3,
+    battery:  S.battery,
+    rssi:     -62,
+    gps:      { lat: 33.7294 + simAlt*0.00001, lon: 73.0931 + simAlt*0.00001, sats: 9, fix: true },
+  });
+}, 100);
+</script>
+</body>
+</html>
