@@ -25,6 +25,7 @@ dataset_v3/
 *.exe
 *.pptx
 WhatsApp*
+internaldocs/
 
 # Python cache
 __pycache__/

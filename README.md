@@ -10,7 +10,7 @@ An edge-AI drone detection system optimized for the Raspberry Pi 4. This project
 
 ## Directory Structure
 ```text
-drone-detection/
+HawkEye/
 ├── front/                  # Ground Control Station dashboard (controller.html)
 ├── notebooks/              # Google Colab notebooks for model training and multi-class dataset merging
 └── src/
